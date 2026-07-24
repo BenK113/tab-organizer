@@ -1,0 +1,14 @@
+node_modules/
+.output/
+.wxt/
+web-ext-artifacts/
+.web-ext-profile/
+coverage/
+*.log
+.env
+.env.*
+.DS_Store
+
+# Claude Code: personal overrides and approvals, not shared
+.claude/settings.local.json
+CLAUDE.local.md
