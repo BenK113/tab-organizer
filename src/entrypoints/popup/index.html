@@ -4,9 +4,98 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tab Organizer</title>
+    <!--
+      Styles live here rather than in a .css file imported from main.tsx, on
+      purpose. In dev, Vite injects imported CSS via JavaScript for hot reload,
+      so the popup paints unstyled — a small white box at its default size —
+      until the bundle finishes loading, then jumps to its real size. Inline in
+      <head> applies before any script runs, in both dev and production.
+      If this grows past ~50 lines, move it back out and accept a <link>.
+    -->
+    <style>
+      :root {
+        /* Tells Firefox to paint the popup chrome in the user's theme
+           immediately, instead of defaulting to white and correcting later. */
+        color-scheme: light dark;
+        font-family: system-ui, sans-serif;
+        font-size: 14px;
+      }
+
+      body {
+        margin: 0;
+        /* Popups size to their content. Without a width the first paint is a
+           sliver that resizes once React renders. */
+        min-width: 320px;
+      }
+
+      .shell {
+        padding: 12px 16px;
+      }
+
+      h1 {
+        font-size: 15px;
+        font-weight: 600;
+        margin: 0 0 8px;
+      }
+
+      p {
+        margin: 0;
+      }
+
+      .error {
+        color: #c0392b;
+      }
+
+      .muted {
+        opacity: 0.65;
+      }
+
+      .summary {
+        margin-bottom: 10px;
+      }
+
+      .footnote {
+        margin-top: 10px;
+        font-size: 12px;
+      }
+
+      .groups {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .groups li {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+      }
+
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        flex: none;
+        /* baseline alignment puts a bare span too low without this nudge */
+        transform: translateY(1px);
+      }
+
+      .label {
+        font-weight: 600;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div class="shell">
+      <!-- Static chrome, painted before the bundle loads. React owns #root only. -->
+      <h1>Tab Organizer</h1>
+      <div id="root">
+        <p>Reading tabs…</p>
+      </div>
+    </div>
     <script type="module" src="./main.tsx"></script>
   </body>
 </html>

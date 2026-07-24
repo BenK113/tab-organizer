@@ -1,14 +1,83 @@
 import { browser } from "wxt/browser";
+import type { TabInfo } from "@/core/types";
 
 /**
- * Number of tabs in the window the popup was opened from.
- *
- * Scaffold-level: this exists so the popup has something real to show. Step 3
- * replaces it with readTabs(), which returns TabInfo[] for the core.
+ * Reading tabs out of the browser and into plain data. This file decides
+ * *nothing* about grouping — its only judgement call is which tabs the core is
+ * allowed to see at all.
  */
-export async function countTabsInCurrentWindow(): Promise<number> {
-  // currentWindow, not the "last focused" default: browser.tabs.query({}) would
-  // return tabs from every open window, which is never what we want.
-  const tabs = await browser.tabs.query({ currentWindow: true });
-  return tabs.length;
+
+/**
+ * Schemes we can neither group nor move. Firefox rejects the operation, so these
+ * are filtered here rather than discovered as a rejected promise mid-apply.
+ */
+const PRIVILEGED_SCHEMES: readonly string[] = [
+  "about:",
+  "moz-extension:",
+  "chrome:",
+  "view-source:",
+  "file:",
+  "data:",
+  "javascript:",
+];
+
+/** The tabGroups API's "this tab is in no group" sentinel. */
+const TAB_GROUP_ID_NONE = -1;
+
+function isPrivileged(url: string): boolean {
+  return PRIVILEGED_SCHEMES.some((scheme) => url.startsWith(scheme));
+}
+
+/**
+ * Returns the tabs of `windowId` that the core is allowed to reorganise, as
+ * plain data.
+ *
+ * Excluded, and each for a different reason: pinned tabs (the user placed them
+ * there on purpose), privileged URLs (the browser refuses to move them), and
+ * tabs that already belong to a group (if you grouped it, that was deliberate —
+ * see D-005; this is also what makes applying twice a no-op).
+ */
+export async function readTabs(windowId: number): Promise<TabInfo[]> {
+  const tabs = await browser.tabs.query({ windowId });
+  const organisable: TabInfo[] = [];
+
+  for (const tab of tabs) {
+    // `id` and `url` are optional in the API. A tab without an id cannot be
+    // grouped, and without "tabs" permission `url` would be undefined — if that
+    // ever happens we want to skip the tab, not crash the popup.
+    if (tab.id === undefined || tab.url === undefined) continue;
+    if (tab.pinned) continue;
+    if (isPrivileged(tab.url)) continue;
+    if (tab.groupId !== undefined && tab.groupId !== TAB_GROUP_ID_NONE) continue;
+
+    organisable.push({
+      id: tab.id,
+      windowId: tab.windowId ?? windowId,
+      index: tab.index,
+      title: tab.title ?? "",
+      url: tab.url,
+      // Firefox omits lastAccessed on some tabs. 0 reads as "very long ago",
+      // which is the safe default for a stale-tab stage that does not exist yet.
+      lastAccessed: tab.lastAccessed ?? 0,
+    });
+  }
+
+  return organisable;
+}
+
+/**
+ * The window the popup was opened from, plus its organisable tabs.
+ *
+ * One query rather than a windows.getCurrent() round trip first; the window id
+ * comes off the tabs we already have.
+ */
+export async function readCurrentWindow(): Promise<{ windowId: number; tabs: TabInfo[] }> {
+  const all = await browser.tabs.query({ currentWindow: true });
+  const windowId = all[0]?.windowId;
+
+  if (windowId === undefined) {
+    throw new Error("No current window — the popup is open without a window to read.");
+  }
+
+  return { windowId, tabs: await readTabs(windowId) };
 }
