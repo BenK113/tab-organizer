@@ -1,0 +1,281 @@
+# Design
+
+Everything about how this thing works: types, pipeline, what to build in what
+order, and the decisions that got us here. One file on purpose.
+
+## The one idea
+
+**Functional core, imperative shell.** All decisions are made by pure functions
+over plain data. All effects — reading tabs, moving tabs, storing settings — live
+in a thin layer that makes no decisions.
+
+This is not architecture astronautics. It buys three concrete things:
+
+1. The grouping logic is testable without a browser. No mocks, no headless
+   Firefox in CI. Just `buildPlan(tabs, config, now)` and an assertion.
+2. The preview UI comes for free — the plan is computed before anything is
+   applied, so showing the user what will happen is just rendering it.
+3. Undo comes almost for free. `applyPlan` returns a snapshot of what it changed.
+
+## Layout
+
+    src/core/        Pure TypeScript. TabInfo[] + Config -> GroupPlan. All the logic.
+    src/platform/    The only place `browser.*` is allowed. Thin adapters.
+    src/ui/          React components. Render a GroupPlan, decide nothing.
+    src/entrypoints/ What WXT compiles into the extension. Just the popup (D-010).
+
+## Data flow
+
+    browser.tabs.query({ windowId })
+            |
+            v
+    [platform] toTabInfo()           drop pinned, privileged, already-grouped
+            |
+            v
+    [core] buildPlan(tabs, config, now)   PURE — the entire product is here
+            |
+            v
+    [ui] <PlanPreview plan={...} />  user unchecks groups, applies or discards
+            |
+            v
+    [platform] applyPlan(plan, excluded) -> Snapshot
+            |
+            v
+    [platform] restore(snapshot)     undo
+
+## Types
+
+```ts
+// Firefox's tabGroups palette. Hand-written union, not imported from the
+// browser — that is what keeps core free of browser types.
+type GroupColor =
+  | "blue" | "cyan" | "green" | "grey" | "orange"
+  | "pink" | "purple" | "red" | "yellow";
+
+type TabInfo = {
+  id: number;
+  windowId: number;
+  index: number;
+  url: string;
+  title: string;
+  lastAccessed: number;   // epoch ms, passed IN — core never calls Date.now()
+  // No groupId: already-grouped tabs never reach the core. See D-005.
+  // No pinned: pinned tabs never reach the core either.
+};
+
+type GroupProposal = {
+  key: string;            // stable identity, e.g. "domain:github.com"
+  label: string;
+  color: GroupColor;
+  tabIds: number[];
+  reason: string;         // shown in the preview: "12 tabs from github.com"
+};
+
+type DuplicateCluster = {
+  canonicalUrl: string;
+  keep: number;           // tab id to keep — lowest tab index wins
+  close: number[];        // tab ids proposed for closing
+};
+
+type GroupPlan = {
+  windowId: number;
+  groups: GroupProposal[];
+  ungrouped: number[];
+  duplicates: DuplicateCluster[];
+  stats: { tabCount: number; groupCount: number; wouldClose: number };
+};
+
+type Config = {
+  minGroupSize: number;      // default 3 — two tabs is not clutter
+  maxGroups: number;         // default 12
+  detectDuplicates: boolean; // default true
+};
+
+type Snapshot = {
+  windowId: number;
+  createdAt: number;
+  createdGroups: { groupId: number; tabIds: number[] }[];
+  closedTabs: { url: string; index: number }[];  // reopened as NEW tabs, see D-006
+};
+
+// pure, src/core/plan.ts
+declare function buildPlan(tabs: TabInfo[], config: Config, now: number): GroupPlan;
+
+// impure, src/platform/apply.ts
+declare function applyPlan(plan: GroupPlan, excludedKeys: string[]): Promise<Snapshot>;
+declare function restore(snapshot: Snapshot): Promise<void>;
+```
+
+`reason` on every proposal is deliberate. A grouping the user cannot explain is a
+grouping the user will not trust, and the field costs nothing to carry.
+
+`now` is unused in v1 — stale-tab detection is the first thing that needs it. It
+stays in the signature because it is the seam that keeps the core pure, and
+threading it in later would touch every call site.
+
+## The pipeline
+
+Everything is deterministic and offline. Same input, same bytes out.
+
+**Before the core sees anything**, the adapter drops: pinned tabs, privileged
+URLs, and tabs that are already in a group.
+
+Then, in `buildPlan`:
+
+1. **Duplicates** — same `canonicalUrl`. The `close` tabs are removed from the
+   input to everything downstream, so the groups shown in the preview contain
+   exactly what will exist after apply. Skipped when `detectDuplicates` is false.
+2. **Domain clustering** — bucket by eTLD+1, a bucket becomes a group at
+   `minGroupSize` or more. This alone handles most of the mess.
+3. Whatever is left becomes `ungrouped`.
+
+Stages share one shape, which is what makes adding stage 4 cheap:
+
+```ts
+type PlanContext = { config: Config; now: number };
+type Stage = (tabs: TabInfo[], ctx: PlanContext) =>
+  { groups: GroupProposal[]; remaining: TabInfo[] };
+```
+
+**Not in v1**, in rough order of how likely I am to want them: known-services
+table (`github.com` -> "Dev"), user-defined domain rules, title-similarity
+clustering over the remainder, stale tabs into an "Archive" group, options page.
+Each is a new `Stage` plus a `Config` field. None of them block shipping.
+
+## Where AI goes (v2, not now)
+
+An optional stage that runs **instead of** title clustering, on the same input:
+the remainder after domain clustering. Not after it — that would feed the AI
+whatever the fuzziest heuristic already gave up on, and make the comparison
+meaningless. Same input, same output type, one flag picks which runs. It never
+sees every tab, never runs without an explicit click, and if it is slow or
+unavailable the plan is simply the deterministic one.
+
+## Build order
+
+Ship after step 6. Everything else is driven by actually using it.
+
+1. ~~**Scaffold**~~ — done. WXT + TS strict + Vitest + Biome, MV3 manifest,
+   popup shows the current window's tab count, `npm run verify` green and
+   confirmed to exit non-zero on a broken type.
+2. ~~**`src/core/url.ts`**~~ — done. `canonicalUrl` + `registrableDomain`,
+   20 tests covering the edge cases below.
+3. **`src/platform/tabs.ts`** — read tabs into `TabInfo[]`, drop pinned /
+   privileged / already-grouped. Replaces the scaffold's
+   `countTabsInCurrentWindow()`.
+4. **`src/core/plan.ts`** — types, duplicate detection, domain clustering,
+   `buildPlan`. The meat. Edge cases below.
+5. **`src/platform/apply.ts`** — `applyPlan` + `Snapshot` + `restore`.
+6. **`src/ui/`** — popup: preview, per-group checkbox, apply, discard, undo.
+7. **CI** — GitHub Actions running `npm run verify`.
+
+## Edge cases the tests must cover
+
+### `url.ts`
+
+```ts
+/** Returns the registrable domain (eTLD+1), or null for URLs that have none. */
+export function registrableDomain(url: string): string | null;
+
+/** Returns a form of the URL suitable for equality comparison between tabs. */
+export function canonicalUrl(url: string): string | null;
+```
+
+Use `tldts` for public-suffix logic. Do not hand-roll it — `user.github.io` and
+`bbc.co.uk` are why the Public Suffix List exists. Both functions return `null`
+rather than throwing; invalid URLs are normal input here, not exceptional.
+
+`canonicalUrl` rules: lowercase scheme and host, drop a trailing dot on the host,
+drop a leading `www.`, drop the default port, drop tracking params (`utm_*`,
+`fbclid`, `gclid`, `mc_eid`, `ref_src`, `igshid` — **not** bare `ref`, see D-004),
+sort remaining params by key, `null` for anything that is not http/https.
+
+- `https://www.github.com/foo` and `https://github.com/foo` — same domain, and
+  same canonical URL (leading `www.` stripped)
+- `https://ben.github.io/project` — registrable domain is `ben.github.io`, **not**
+  `github.io`, which is on the Public Suffix List
+- `https://www.bbc.co.uk/news` -> `bbc.co.uk`
+- `http://localhost:3000/` — no registrable domain, must not crash
+- `http://192.168.1.10:8080/` — IP host, no registrable domain
+- `https://münchen.de` — punycode and unicode host compare equal
+- `about:blank`, `moz-extension://abc/page.html`, `view-source:https://x.com`,
+  `file:///home/…` -> `null` from both
+- `https://x.com/#/route` vs `https://x.com/#/other` — **different** pages in a
+  hash-routed SPA. Drop the fragment *unless* it starts with `#/`. Record this
+  reasoning in the file's doc comment, not just the behaviour.
+- the empty string, and a string that is not a URL at all
+- a very long URL (data URIs, OAuth redirects) — must not be pathologically slow
+
+### Domain clustering
+
+- Sort groups by size descending, ties by domain name ascending. Output must be
+  **byte-identical** for equivalent input — test with shuffled input. A plan that
+  reshuffles between runs is unusable in a preview.
+- More qualifying buckets than `maxGroups`: keep the largest, rest to remainder.
+- `label` is the domain minus the public suffix, first letter capitalised:
+  `github.com` -> "Github". Ugly for `t.co`; fine for v1.
+- `key` is `domain:<registrable domain>`. Colour is a deterministic hash of the
+  key into the palette — same domain, same colour, every time.
+- empty input; every tab on one domain; every tab on a different domain
+- exactly `minGroupSize` tabs on a domain — boundary, test both sides
+- subdomains: `mail.google.com` and `docs.google.com` both reduce to `google.com`
+  and land in one group. Intended — pin it with a test so changing it is
+  deliberate.
+- 500 tabs — well under a frame; a rough timing assertion is enough
+
+### Duplicates
+
+- three tabs on the same canonical URL -> keep one, close two
+- the kept tab is the one with the lowest index, deterministically
+- a duplicate tab must not also appear in a group proposal
+
+## Decisions
+
+Newest first. One line each; a paragraph only when the reasoning is not obvious.
+
+- **D-011 (2026-07-24)** — `manifestVersion: 3` is set explicitly in
+  `wxt.config.ts`; WXT still defaults Firefox to MV2 and silently built one.
+  `gecko.data_collection_permissions.required: ["none"]` is set too — AMO has
+  required it for new extensions since 2025-11-03.
+- **D-010 (2026-07-24)** — No background script in v1. The popup does everything,
+  and the undo snapshot survives in `storage.session` without a process holding
+  it. An empty event page that exists only because extensions usually have one is
+  the kind of thing we just deleted from the docs.
+- **D-009 (2026-07-24)** — No `webextension-polyfill`. WXT 0.20 gives us
+  `import { browser } from "wxt/browser"`, which is `globalThis.browser ??
+  globalThis.chrome`. Firefox's `browser` is natively promise-based, so on a
+  Firefox-only extension the polyfill is a dependency that buys nothing — and the
+  Chrome fallback we would eventually want is already in WXT's export. WXT
+  auto-imports are also off, so imports stay greppable.
+- **D-008 (2026-07-24)** — No `capabilities.ts`. With `strict_min_version: 139`
+  the only build lacking `tabGroups` is a fork. One check in the popup, showing
+  "this build doesn't support tab groups", is enough. An abstraction that answers
+  one question is not an abstraction.
+- **D-007 (2026-07-24)** — v1 preview allows unchecking a group, nothing else.
+  No renaming, no persisted overrides. That kills the question of where user
+  edits live. Renaming comes back when I miss it in practice.
+- **D-006 (2026-07-24)** — `applyPlan` may close duplicate tabs; the snapshot
+  stores their URLs and undo reopens them as **new** tabs. History and scroll
+  position are lost, and the UI says so before you apply. The alternative —
+  never closing anything — throws away half the value.
+- **D-005 (2026-07-24)** — Tabs already in a group are filtered out in the
+  adapter and never reach the core. If you grouped it, that was deliberate;
+  don't second-guess it. Falls out of this for free: applying twice is a no-op,
+  and `TabInfo` needs no `groupId`.
+- **D-004 (2026-07-24)** — Strip `utm_*`, `fbclid`, `gclid`, `mc_eid`,
+  `ref_src`, `igshid` — but **not** bare `ref`. It is load-bearing on GitHub,
+  npm and most doc sites; stripping it merges genuinely different pages.
+- **D-003 (2026-07-24)** — Everything user-facing is English, including group
+  labels and `reason` strings. No i18n in v1.
+- **D-002 (2026-07-24)** — Deterministic heuristics in v1, AI only in v2 and
+  opt-in. An LLM is slow on a UI action expected to be instant, non-deterministic
+  in a way that destroys trust in a preview, and sends browsing data somewhere.
+  Most of the actual mess is one domain repeated many times, which needs no
+  language model. Building the deterministic version first also gives the AI
+  stage something to be measured against. Consequence: no network permission in
+  the v1 manifest at all, so adding one later is a visible event.
+- **D-001 (2026-07-24)** — Firefox only, `strict_min_version: "139.0"`, but all
+  browser access confined to `src/platform/` so a Chrome port stays a change to
+  one directory. Chrome uses a service-worker background and a different
+  `tabGroups` history; designing for both now would compromise for a v1 nobody
+  but me runs.

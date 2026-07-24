@@ -1,111 +1,64 @@
 # CLAUDE.md — Tab Organizer
 
-## What this is
+Firefox MV3 extension that turns hundreds of open tabs into a handful of tab
+groups. It always shows a preview first; nothing is regrouped without a click.
 
-A Firefox (MV3) WebExtension that turns hundreds of open tabs into a small number
-of meaningful tab groups. It always shows a **preview** of what it intends to do
-and lets the user apply or discard it. Nothing is ever regrouped silently.
-
-Primary user: me. Publishing on AMO is a goal, not a constraint on the design.
-
-## Non-negotiables
-
-1. **No LLM calls in v1.** Grouping is deterministic and offline. AI is a v2
-   experiment behind a feature flag, never a dependency.
-2. **Never mutate tabs except through an applied plan.** Every write goes through
-   `applyPlan()`, and every apply produces an undo snapshot.
-3. **No telemetry, no analytics, no network calls.** Any new host permission
-   requires an ADR.
-4. **The pure core never imports `browser.*`.** See Architecture below.
-
-## Architecture (short version)
-
-Functional core, imperative shell. Full text: @docs/ARCHITECTURE.md
-
-    src/core/        Pure TypeScript. Input: TabInfo[] + Config. Output: GroupPlan.
-                     No browser APIs, no I/O, no Date.now(), no randomness.
-                     Fully unit-tested. All interesting logic lives here.
-    src/platform/    The only place `browser.*` is allowed. Thin adapters that
-                     convert browser objects to and from core types.
-    src/background/  Event wiring and orchestration. No decisions.
-    src/ui/          React popup and options page. Renders a GroupPlan. No logic.
-
-If you are writing an `if` in `src/platform/` or `src/ui/`, the decision almost
-certainly belongs in `src/core/`.
+Solo hobby project. Design and open decisions: @docs/DESIGN.md
 
 ## Stack
 
-- TypeScript, `strict: true`. `any` is a review failure; use `unknown` + narrowing.
-- WXT (Vite-based extension framework) for build and manifest generation.
-- React for popup and options page only.
-- Vitest for unit tests.
-- Biome for lint and format (one tool, no ESLint/Prettier split).
-- `tldts` for eTLD+1 extraction, `webextension-polyfill` for promise-based APIs.
+TypeScript (`strict`), WXT, React (popup only), Vitest, Biome, `tldts`.
+Minimum Firefox **139** — `tabs.group()` landed in 138, `tabGroups.update()`
+(title, colour, collapsed) in 139. No Chrome target.
 
-Minimum Firefox version: **139**. `tabs.group()` and `tabs.ungroup()` landed in
-Firefox 138; `tabGroups.update()` (title, colour, collapsed state) landed in 139.
-Set `strict_min_version` accordingly and never assume Chrome parity.
+`import { browser } from "wxt/browser"` — **not** `webextension-polyfill`, which
+we do not depend on. Firefox's `browser` is already promise-based; WXT's export
+is a two-line shim that falls back to `chrome` elsewhere. Auto-imports are off,
+so every import is written out.
 
 ## Commands
 
-    npm run dev          # WXT dev server, launches Firefox with the extension
-    npm run build        # production build into .output/
-    npm run zip          # AMO-ready archive
-    npm run test         # vitest run
-    npm run test:watch
-    npm run typecheck    # tsc --noEmit
-    npm run lint         # biome check
-    npm run verify       # typecheck + lint + test — must pass before any commit
+    npm run dev        # WXT dev server, launches Firefox with the extension
+    npm run build      # production build into .output/
+    npm run zip        # AMO-ready archive
+    npm run test       # vitest run
+    npm run typecheck  # tsc --noEmit
+    npm run lint       # biome check
+    npm run verify     # typecheck + lint + test — green before every commit
 
 ## How we work
 
-**Ticket-driven.** Work comes from `docs/tickets/`. One ticket, one branch. If I
-ask for something that is not in a ticket, ask whether to write the ticket first.
-Never silently expand scope.
+- **Work directly on `main`.** No tickets, no branches, no plan-approval dance.
+- **Just do the thing.** For anything touching more than ~2 files, one short
+  paragraph of what you're about to do, then start — don't wait for a "go".
+- **Decide small things yourself** and say in one line what you decided.
+  Ask only when it changes the data model, costs a dependency, or is genuinely
+  a coin flip.
+- **Tests only where they earn their keep:** `src/core/`, and only for logic
+  with real edge cases (`url.ts`, the plan pipeline). No tests for adapters,
+  no tests for React components.
+- **Never add a dependency without asking.** Never add a host permission.
+- **I run git.** You may `git status`, `git diff`, `git log`. Commit only when
+  I say so in that message — I read the diff first.
 
-**Plan before code.** For anything touching more than one file, use plan mode and
-present the plan. Wait for my explicit "go" before editing anything.
+## Code rules
 
-**Tests first in `src/core/`.** Write the failing test, show me the run, then
-implement. Adapters in `src/platform/` should be thin enough not to need tests.
+- No `any`, no `!` non-null assertions. Use `unknown` and narrow.
+- `src/core/` is pure: no `browser.*`, no I/O, no `Date.now()`, no
+  `Math.random()`. Time is a parameter.
+- `src/platform/` is the only place `browser.*` appears, and it makes no
+  decisions.
+- If you're writing an `if` in `src/platform/` or `src/ui/`, the decision
+  probably belongs in `src/core/`.
+- Exported core functions get a one-line doc comment stating what they
+  *guarantee* ("groups sorted by size desc, stable for ties"), not what they do.
 
-**Small diffs.** If a change would exceed roughly 200 lines, stop and propose a
-split. I review every line; a diff I cannot read in one sitting is a diff I
-cannot approve.
+## Gotchas that will otherwise waste your time
 
-**Architectural decisions are mine.** Data model, module boundaries, the grouping
-heuristics themselves: present options with honest tradeoffs, do not pick one.
-Once I decide, record it with `/adr`.
-
-**I run git.** You may run `git status`, `git diff`, `git log`. You do not branch,
-merge, or push. Commits only when I ask in that same message.
-
-**Dependencies.** Ask before adding any. State the bundle-size cost and the
-alternative of writing it ourselves.
-
-## Definition of Done
-
-- [ ] `npm run verify` passes
-- [ ] New logic in `src/core/` has tests covering the edge cases named in the ticket
-- [ ] No new `any`, no new `!` non-null assertion, no `@ts-expect-error` without a
-      comment explaining why
-- [ ] Extension still loads in Firefox and the popup still works
-- [ ] Every acceptance criterion in the ticket is ticked
-- [ ] If an architectural decision was made, an ADR exists
-
-## Rules
-
-@.claude/rules/typescript.md
-@.claude/rules/webextension.md
-
-## Things that will otherwise waste your time
-
-- `browser.tabs.query({})` returns tabs from every window. The core always takes
-  an explicit `windowId`.
-- Firefox MV3 uses a **non-persistent background event page**, not a Chrome-style
-  service worker. Module-level state does not survive; persist to
-  `browser.storage.session`.
-- Privileged pages (`about:`, `moz-extension:`, `view-source:`) cannot be grouped
-  or moved. Filter them in the platform adapter, never in the core.
-- Firefox requires `browser_specific_settings.gecko.id` for AMO signing. Do not
-  remove it.
+- `browser.tabs.query({})` returns tabs from every window. Always pass an
+  explicit `windowId`.
+- Firefox MV3 uses a **non-persistent event page**, not a service worker.
+  Module-level state does not survive; persist to `browser.storage.session`.
+- Privileged URLs (`about:`, `moz-extension:`, `chrome:`, `view-source:`,
+  `file:`) cannot be grouped or moved. Filter them in the adapter, never in core.
+- Keep `browser_specific_settings.gecko.id` — AMO signing needs it.
