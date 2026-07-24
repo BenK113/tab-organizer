@@ -1,0 +1,20 @@
+{
+  // WXT generates .wxt/tsconfig.json (paths, lib, the @/ alias) on every `wxt prepare`.
+  // We inherit it and only add the strictness it does not turn on by default.
+  "extends": "./.wxt/tsconfig.json",
+  "compilerOptions": {
+    // strict is already on via the generated config. These three are not:
+
+    // arr[0] is `T | undefined`, not `T`. Catches the classic off-by-one read.
+    "noUncheckedIndexedAccess": true,
+    // `{ a?: string }` and `{ a: string | undefined }` stop being interchangeable.
+    "exactOptionalPropertyTypes": true,
+    // dead variables are a review comment we never have to write by hand
+    "noUnusedLocals": true,
+
+    // Note: noUnusedParameters stays OFF on purpose — buildPlan(tabs, config, now)
+    // carries `now` before the stale-tab stage uses it. See docs/DESIGN.md.
+
+    "jsx": "react-jsx"
+  }
+}
