@@ -1,4 +1,4 @@
-import { browser } from "wxt/browser";
+import { type Browser, browser } from "wxt/browser";
 import type { TabInfo } from "@/core/types";
 
 /**
@@ -29,16 +29,14 @@ function isPrivileged(url: string): boolean {
 }
 
 /**
- * Returns the tabs of `windowId` that the core is allowed to reorganise, as
- * plain data.
+ * The tabs of a query result the core is allowed to reorganise, as plain data.
  *
  * Excluded, and each for a different reason: pinned tabs (the user placed them
  * there on purpose), privileged URLs (the browser refuses to move them), and
  * tabs that already belong to a group (if you grouped it, that was deliberate —
  * see D-005; this is also what makes applying twice a no-op).
  */
-export async function readTabs(windowId: number): Promise<TabInfo[]> {
-  const tabs = await browser.tabs.query({ windowId });
+function toTabInfo(tabs: readonly Browser.tabs.Tab[], windowId: number): TabInfo[] {
   const organisable: TabInfo[] = [];
 
   for (const tab of tabs) {
@@ -68,8 +66,9 @@ export async function readTabs(windowId: number): Promise<TabInfo[]> {
 /**
  * The window the popup was opened from, plus its organisable tabs.
  *
- * One query rather than a windows.getCurrent() round trip first; the window id
- * comes off the tabs we already have.
+ * Exactly one query. Firefox serialises every tab's URL and title across the
+ * IPC boundary on each one, so asking twice — once for the window id, once for
+ * the tabs — is a cost the user waits through while the popup sits empty.
  */
 export async function readCurrentWindow(): Promise<{ windowId: number; tabs: TabInfo[] }> {
   const all = await browser.tabs.query({ currentWindow: true });
@@ -79,5 +78,5 @@ export async function readCurrentWindow(): Promise<{ windowId: number; tabs: Tab
     throw new Error("No current window — the popup is open without a window to read.");
   }
 
-  return { windowId, tabs: await readTabs(windowId) };
+  return { windowId, tabs: toTabInfo(all, windowId) };
 }
