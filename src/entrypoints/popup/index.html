@@ -9,10 +9,14 @@
   </head>
   <body>
     <div class="shell">
-      <!-- Static chrome, painted before the bundle loads. React owns #root only. -->
-      <h1>Tab Organizer</h1>
+      <!-- Static chrome, painted before the bundle loads. React owns #root only,
+           which is why the tab count lives inside the app and not up here. -->
+      <header class="head">
+        <h1>Tab Organizer</h1>
+        <span class="tagline">Nothing moves until you apply</span>
+      </header>
       <div id="root">
-        <p>Reading tabs…</p>
+        <p class="muted">Reading tabs…</p>
       </div>
     </div>
     <script type="module" src="./main.tsx"></script>
