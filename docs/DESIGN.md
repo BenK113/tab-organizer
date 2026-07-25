@@ -171,7 +171,8 @@ Ship after step 6. Everything else is driven by actually using it.
 6. ~~**`src/ui/`**~~ — done. Preview, per-group checkbox, duplicates toggle,
    apply, discard, undo. Not yet driven by a human against a real window — the
    README checklist is the gate before this counts as shipped.
-7. **CI** — GitHub Actions running `npm run verify`.
+7. ~~**CI**~~ — done. `.github/workflows/verify.yml` runs `npm run verify` plus
+   a build on every push to `main` and every PR.
 
 ## Edge cases the tests must cover
 

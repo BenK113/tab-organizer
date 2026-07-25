@@ -1,5 +1,7 @@
 # tab-organizer
 
+[![verify](https://github.com/BenK113/tab-organizer/actions/workflows/verify.yml/badge.svg)](https://github.com/BenK113/tab-organizer/actions/workflows/verify.yml)
+
 A Firefox extension that turns hundreds of open tabs into a handful of tab
 groups. It shows you a preview of what it wants to do; nothing moves until you
 click apply, and every apply can be undone.
