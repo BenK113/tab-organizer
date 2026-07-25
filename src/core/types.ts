@@ -5,9 +5,9 @@
 
 /**
  * The nine colours the tabGroups API accepts, written out by hand so that
- * src/core/ stays free of browser types. Verified against
- * `@wxt-dev/browser`'s `tabGroups.Color`; src/platform/groups.ts holds a
- * compile-time check that the two never drift apart.
+ * src/core/ stays free of browser types. `toBrowserColor` in
+ * src/platform/apply.ts is a compile-time check that this union stays a subset
+ * of what the browser will actually accept.
  */
 export type GroupColor =
   | "blue"

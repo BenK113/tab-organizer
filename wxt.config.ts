@@ -20,9 +20,10 @@ export default defineConfig({
     description:
       "Groups your open tabs into a few meaningful groups, with a preview you approve first.",
 
-    // "tabs" to read urls and titles, "storage" for the undo snapshot and settings.
+    // "tabs" to read urls and titles, "storage" for the undo snapshot and settings,
+    // "tabGroups" to title and colour a group (tabs.group() itself needs nothing).
     // Nothing else, ever — no host permissions, so the extension cannot read page content.
-    permissions: ["tabs", "storage"],
+    permissions: ["tabs", "storage", "tabGroups"],
 
     browser_specific_settings: {
       gecko: {
