@@ -1,0 +1,7 @@
+# LF everywhere, in the repo and in the working copy.
+#
+# Without this, core.autocrlf=true (the Windows default) checks files out with
+# CRLF. Biome formats to LF, so a fresh clone would fail `npm run verify` on
+# line endings alone, having changed nothing. eol=lf takes that decision away
+# from whatever git config the machine happens to have.
+* text=auto eol=lf
