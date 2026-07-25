@@ -6,7 +6,8 @@ click apply, and every apply can be undone.
 
 Everything is computed locally. No network calls, no telemetry, no LLM.
 
-**Status:** design done, not built yet. See [docs/DESIGN.md](docs/DESIGN.md).
+**Status:** v1 is code-complete and unverified in a real browser — the checklist
+below is the gate. See [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Requirements
 
@@ -28,6 +29,8 @@ The unit tests cover the logic; these are the things only a human can see.
 - [ ] Preview lists groups with a readable reason for each
 - [ ] Unchecking a group excludes it from the apply
 - [ ] Apply actually creates the groups in the tab strip, with the right colours
+- [ ] Unchecking "close duplicates" grows the groups it was taking tabs out of
 - [ ] Undo puts everything back, including reopening closed duplicates
+- [ ] Undo still offered after closing and reopening the popup
 - [ ] Applying twice in a row does nothing the second time
 - [ ] Pinned tabs and `about:` pages are untouched

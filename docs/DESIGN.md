@@ -102,7 +102,8 @@ type Snapshot = {
 declare function buildPlan(tabs: TabInfo[], config: Config, now: number): GroupPlan;
 
 // impure, src/platform/apply.ts
-declare function applyPlan(plan: GroupPlan, excludedKeys: string[]): Promise<Snapshot>;
+type ApplyResult = { snapshot: Snapshot; failedKeys: string[] };  // see D-015
+declare function applyPlan(plan: GroupPlan, excludedKeys: string[]): Promise<ApplyResult>;
 declare function restore(snapshot: Snapshot): Promise<void>;
 ```
 
@@ -160,13 +161,16 @@ Ship after step 6. Everything else is driven by actually using it.
    confirmed to exit non-zero on a broken type.
 2. ~~**`src/core/url.ts`**~~ — done. `canonicalUrl` + `registrableDomain`,
    20 tests covering the edge cases below.
-3. **`src/platform/tabs.ts`** — read tabs into `TabInfo[]`, drop pinned /
-   privileged / already-grouped. Replaces the scaffold's
-   `countTabsInCurrentWindow()`.
-4. **`src/core/plan.ts`** — types, duplicate detection, domain clustering,
-   `buildPlan`. The meat. Edge cases below.
-5. **`src/platform/apply.ts`** — `applyPlan` + `Snapshot` + `restore`.
-6. **`src/ui/`** — popup: preview, per-group checkbox, apply, discard, undo.
+3. ~~**`src/platform/tabs.ts`**~~ — done. Reads tabs into `TabInfo[]`, drops
+   pinned / privileged / already-grouped.
+4. ~~**`src/core/plan.ts`**~~ — done. Duplicate detection, domain clustering,
+   `buildPlan`, 40 tests.
+5. ~~**`src/platform/apply.ts`**~~ — done. `applyPlan` + `Snapshot` + `restore`,
+   with the snapshot parked in `storage.session` (`src/platform/storage.ts`) so
+   undo survives the popup closing.
+6. ~~**`src/ui/`**~~ — done. Preview, per-group checkbox, duplicates toggle,
+   apply, discard, undo. Not yet driven by a human against a real window — the
+   README checklist is the gate before this counts as shipped.
 7. **CI** — GitHub Actions running `npm run verify`.
 
 ## Edge cases the tests must cover
@@ -233,6 +237,23 @@ sort remaining params by key, `null` for anything that is not http/https.
 
 Newest first. One line each; a paragraph only when the reasoning is not obvious.
 
+- **D-015 (2026-07-25)** — `applyPlan` degrades instead of aborting: a proposal
+  the browser refuses lands in `failedKeys` and the remaining groups are still
+  created. The snapshot then describes what actually happened rather than what
+  was asked for, which is the only version undo can be built on.
+- **D-014 (2026-07-25)** — The duplicates checkbox recomputes the plan with
+  `detectDuplicates: false` rather than filtering the existing one. Keeping the
+  duplicates puts those tabs back into the domain groups, so a preview that only
+  crossed out the duplicates line would be showing group sizes that are wrong.
+- **D-013 (2026-07-25)** — Undo dissolves the groups it created and reopens the
+  tabs it closed. It does **not** restore tab order. Grouping moves tabs
+  together, so putting the strip back would mean recording every tab's old index
+  and replaying a second, larger set of moves that can itself fail halfway. The
+  popup says what undo does before you apply; that is enough for v1.
+- **D-012 (2026-07-25)** — Added the `"tabGroups"` permission. `tabs.group()`
+  needs no permission, but `tabGroups.update()` — the call that gives a group its
+  title and colour — does. It is not a host permission and Firefox does not show
+  it in the install prompt, so the "no host permissions, ever" line holds.
 - **D-011 (2026-07-24)** — `manifestVersion: 3` is set explicitly in
   `wxt.config.ts`; WXT still defaults Firefox to MV2 and silently built one.
   `gecko.data_collection_permissions.required: ["none"]` is set too — AMO has
