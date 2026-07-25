@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!--
+    Three bars, sorted long to short: the thing the extension does to a window,
+    in the one shape that still reads at 16px. SVG rather than five PNGs because
+    Firefox accepts it and this extension targets nothing else (D-018).
+    Colours are from the tabGroups palette the popup previews with.
+  -->
+  <title>Tab Organizer</title>
+  <rect x="8" y="11" width="48" height="13" rx="6.5" fill="#3b82f6" />
+  <rect x="8" y="28" width="34" height="13" rx="6.5" fill="#22c55e" />
+  <rect x="8" y="45" width="20" height="13" rx="6.5" fill="#f97316" />
+</svg>

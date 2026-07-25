@@ -238,6 +238,19 @@ sort remaining params by key, `null` for anything that is not http/https.
 
 Newest first. One line each; a paragraph only when the reasoning is not obvious.
 
+- **D-019 (2026-07-25)** — Add-on id is `tab-organizer@benk113.github.io`, fixed
+  before the first signed build. AMO signs against the id, and changing it later
+  makes Firefox treat the result as a different add-on that has to be installed
+  again from scratch. Distribution is unlisted ("On your own"): signed, not
+  published, no review queue for something one person uses.
+- **D-018 (2026-07-25)** — One `icon.svg` instead of a set of PNGs. Firefox
+  renders SVG extension icons and Chrome does not, which is a trade a
+  Firefox-only extension can take (D-001). It also means the icon is a file you
+  can edit rather than five exports you have to regenerate.
+- **D-017 (2026-07-25)** — The preview lets a group be expanded to list its tabs
+  by title. "12 tabs from github.com" is a claim, and the point of a preview is
+  that it can be checked before agreeing rather than after. Costs nothing: the
+  popup already holds every tab it read.
 - **D-016 (2026-07-25)** — No CI. It was built and removed the same day: on a
   one-person project a pipeline only re-runs `npm run verify`, which already has
   to be green before every commit, and reports it to nobody. It would be

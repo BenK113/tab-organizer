@@ -4,6 +4,12 @@ export default defineConfig({
   // Source lives under src/, so WXT looks for src/entrypoints/ instead of ./entrypoints/.
   srcDir: "src",
 
+  // publicDir is resolved against the project root, not srcDir, so it does not
+  // follow the line above and has to be said out loud. Files in here are copied
+  // to the extension root verbatim — that is what makes "icon.svg" in the
+  // manifest resolve.
+  publicDir: "src/public",
+
   // Auto-imports off, deliberately. WXT can make `browser`, React hooks and our own
   // helpers appear without an import statement. That is convenient and unreadable:
   // you open a file and cannot tell where a name came from. Every import is explicit.
@@ -20,6 +26,30 @@ export default defineConfig({
     description:
       "Groups your open tabs into a few meaningful groups, with a preview you approve first.",
 
+    // One SVG for every size. Firefox renders SVG extension icons; Chrome does
+    // not, which is a trade this Firefox-only extension can make (D-018).
+    icons: {
+      16: "icon.svg",
+      32: "icon.svg",
+      48: "icon.svg",
+      96: "icon.svg",
+      128: "icon.svg",
+    },
+
+    action: {
+      default_icon: "icon.svg",
+      default_title: "Tab Organizer",
+    },
+
+    // Alt+Shift+O is unclaimed in Firefox — Ctrl+Shift+O is the bookmarks
+    // library. Rebindable under about:addons → gear → Manage Extension Shortcuts.
+    commands: {
+      _execute_action: {
+        suggested_key: { default: "Alt+Shift+O" },
+        description: "Open Tab Organizer",
+      },
+    },
+
     // "tabs" to read urls and titles, "storage" for the undo snapshot and settings,
     // "tabGroups" to title and colour a group (tabs.group() itself needs nothing).
     // Nothing else, ever — no host permissions, so the extension cannot read page content.
@@ -27,8 +57,10 @@ export default defineConfig({
 
     browser_specific_settings: {
       gecko: {
-        // AMO needs a stable id to sign against. Placeholder — change before submitting.
-        id: "tab-organizer@extensions.local",
+        // AMO signs against this id, and changing it after the first signed
+        // build makes Firefox treat the result as a different add-on. Fixed now,
+        // while nothing has been signed yet.
+        id: "tab-organizer@benk113.github.io",
         // tabGroups.update() (title, colour, collapsed) landed in Firefox 139.
         strict_min_version: "139.0",
         // Required by AMO for extensions new since 2025-11-03. "none" is a real,
