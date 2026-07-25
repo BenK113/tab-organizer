@@ -171,8 +171,8 @@ Ship after step 6. Everything else is driven by actually using it.
 6. ~~**`src/ui/`**~~ — done. Preview, per-group checkbox, duplicates toggle,
    apply, discard, undo. Not yet driven by a human against a real window — the
    README checklist is the gate before this counts as shipped.
-7. ~~**CI**~~ — done. `.github/workflows/verify.yml` runs `npm run verify` plus
-   a build on every push to `main` and every PR.
+7. ~~**CI**~~ — dropped, see D-016. `npm run verify` before each commit is the
+   gate.
 
 ## Edge cases the tests must cover
 
@@ -238,6 +238,11 @@ sort remaining params by key, `null` for anything that is not http/https.
 
 Newest first. One line each; a paragraph only when the reasoning is not obvious.
 
+- **D-016 (2026-07-25)** — No CI. It was built and removed the same day: on a
+  one-person project a pipeline only re-runs `npm run verify`, which already has
+  to be green before every commit, and reports it to nobody. It would be
+  maintenance with no reader. If this ever takes contributors, it comes back —
+  the workflow file is in the history at `2414d74`.
 - **D-015 (2026-07-25)** — `applyPlan` degrades instead of aborting: a proposal
   the browser refuses lands in `failedKeys` and the remaining groups are still
   created. The snapshot then describes what actually happened rather than what
